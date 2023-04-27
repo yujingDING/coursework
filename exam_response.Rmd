@@ -1,27 +1,5 @@
----
-title: "Name: Yujing Ding"
-author: 
-- |
-    | Student number: 22097721
-date: "`r format(Sys.time(), '%X, %d %B, %Y')`"
-output: html_document
----
-
-# Originality declaration
-
-I, [**Yujing Ding**], confirm that the work presented in this assessment is my own. Where information has been derived from other sources, I confirm that this has been indicated in the work.
-
-date: `r format(Sys.time(), '%d %B, %Y')`
 
 # Start your response here
-
-## Initial project scope
-
-I now have the shape file of New York City and the csv file of the location where the eviction occurred. So I think I can use these data to analyze whether the eviction in New York City presents some specific point patterns. According to the set questions, the date of eviction is 2020, and after my exploration data set, the scope is further limited to the eviction of houses as residents' personal property. Therefore, my research question is: is the eviction of residents from their own property shows some spatial patterns in New York City in 2020?
-
-The null hypothesis here is that there is no spatial pattern, all points are randomly distributed and there is no clustering.
-
-The New York area data I have now include the code, coordinates, and area. I expect to use the coordinates. The csv file of expulsion has many specific data, such as the location, room number, occurrence time, marshal name, house type, coordinates, etc. of expulsion. I expect to use the coordinates of the location and other data used for filtering. At the same time, there are also some cells without content and na values in this file, so I will pay attention to them and handle them later.
 
 #### library()
 
@@ -270,15 +248,6 @@ tm_legend(text.size =0.8,title.size=0.8)
 
 
 ```
-
-## reflection
-
-the results shows that there is some spatial patterns of eviction in NewYork in 2020, and they are almost in northern and southern. but there is also some disadvantage in my analysis. For example, in the step of DBSCAN, the final value of eps and min points are set after my test， not come from perivous plot. Because the results of Reley's K and KNN shows NewYork is all cluster which means nothing. 
-
-
-
-## Discussion
-the result do show there is some clusterings of evictions in New York, which answer the question set before. but there may be some further work I could do to enrich this project.the other work I can do may be that to try the different year's data to see if the results is the same.If I have more detailed data in district, like the borough's longitude and latitude, I may try to go deeper in the clustering analysis of different borough in north and south New York City, which have significant spatial partten. also the factors of why there is eviction cluster in north and south part can also be analysis.
 
 
 
