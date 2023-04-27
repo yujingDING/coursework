@@ -1,0 +1,284 @@
+---
+title: "Name: Yujing Ding"
+author: 
+- |
+    | Student number: 22097721
+date: "`r format(Sys.time(), '%X, %d %B, %Y')`"
+output: html_document
+---
+
+# Originality declaration
+
+I, [**Yujing Ding**], confirm that the work presented in this assessment is my own. Where information has been derived from other sources, I confirm that this has been indicated in the work.
+
+date: `r format(Sys.time(), '%d %B, %Y')`
+
+# Start your response here
+
+## Initial project scope
+
+I now have the shape file of New York City and the csv file of the location where the eviction occurred. So I think I can use these data to analyze whether the eviction in New York City presents some specific point patterns. According to the set questions, the date of eviction is 2020, and after my exploration data set, the scope is further limited to the eviction of houses as residents' personal property. Therefore, my research question is: is the eviction of residents from their own property shows some spatial patterns in New York City in 2020?
+
+The null hypothesis here is that there is no spatial pattern, all points are randomly distributed and there is no clustering.
+
+The New York area data I have now include the code, coordinates, and area. I expect to use the coordinates. The csv file of expulsion has many specific data, such as the location, room number, occurrence time, marshal name, house type, coordinates, etc. of expulsion. I expect to use the coordinates of the location and other data used for filtering. At the same time, there are also some cells without content and na values in this file, so I will pay attention to them and handle them later.
+
+#### library()
+
+library all packages I may(or may not) need.
+
+```{r}
+library(spatstat)
+library(here)
+library(sp)
+library(rgeos)
+library(maptools)
+library(tmap)
+library(sf)
+library(geojson)
+library(geojsonio)
+library(tmaptools)
+library(stringr)
+library(tidyverse)
+library(raster)
+library(fpc)
+library(sf)
+library(dbscan)
+library(ggplot2)
+library(janitor)
+```
+
+## read in shp and csv data
+
+To ensure that its coordinate reference system is correct, transform the EPSG code to New York City in shapefile. When I view the data in Excel, I find that the data set contains null values and N/A values. To avoid errors in the next phase, I set na value in the csv.
+
+```{r}
+NYdistricts <- st_read(here::here("Data_New York Evictions",
+                                    "Community Districts", "geo_export_0d7e1240-f4a4-4c95-8a73-4de70e5a3c79.shp"))%>%
+  st_transform(., 2263)
+
+NYEvictions <- read_csv(here::here("Data_New York Evictions","Evictions.csv"),
+                        na = c(" ","N/A"))
+```
+
+have a quick look at the district map to aviod wired area.
+
+```{r}
+qtm(NYdistricts)
+```
+
+there is nothing strange. then check the datatype of each columns in csv
+
+```{r}
+Datatypelist <- NYEvictions %>% 
+  summarise_all(class) %>%
+  pivot_longer(everything(), 
+               names_to="All_variables", 
+               values_to="Variable_class")
+
+Datatypelist
+```
+
+## data wrangling
+
+ignore the na values in csv,clean names and then the observations are dropped from 71,601 to 64,584
+
+```{r}
+NYEvictions <- NYEvictions %>% 
+  clean_names() %>% 
+  na.omit(NYEvictions)
+```
+
+### filter
+
+filter the rows needed to match the question and keep the unique row in the data to avoid duplication, then only 2754 points are retained
+
+```{r}
+NYEvictions_fin <- NYEvictions %>% 
+  dplyr::filter(str_detect(executed_date,"2020")) %>% 
+  filter(residential_commercial == "Residential") %>% 
+  filter(ejectment == "Not an Ejectment") %>% 
+  filter(eviction_legal_possession=="Possession")
+
+NYEvictions_fin <- NYEvictions_fin %>% 
+  dplyr::distinct()
+```
+
+### transform CRS
+
+transfer csv into sf object so that it can be mapped
+
+```{r}
+NYEvictions_fin <- NYEvictions_fin %>%
+  st_as_sf(., coords = c("longitude", "latitude"), crs = 4326) %>%
+  st_transform(., 2263)
+```
+
+have a quick look at the points in district map
+
+```{r}
+tmap_mode("plot")
+tm_shape(NYdistricts) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(NYEvictions_fin) +
+  tm_dots(col = "blue")
+```
+
+### clean the data
+
+delete the points outside the boundary and check the map, find that no observation is removed
+
+```{r}
+
+NYEv_points <- NYEvictions_fin[NYdistricts,]
+
+# check the map
+tmap_mode("plot")
+tm_shape(NYdistricts) +
+  tm_polygons(col = NA, alpha = 0.5) +
+tm_shape(NYEv_points) +
+  tm_dots(col = "blue")
+```
+
+change the CRS into meters not feet,not sure the 32118 is correct or not
+
+```{r}
+NYdistricts <- NYdistricts %>%
+  st_transform(., 32118)
+
+NYEv_points <- NYEv_points %>%
+  st_transform(., 32118)
+
+```
+
+## start to do the clustering analysis
+
+### preperation
+
+create a new window so that we can analysis them together
+
+```{r}
+
+window <- as.owin(NYdistricts)
+plot(window)
+
+
+NYEv_points <- NYEv_points %>%
+  as(., 'Spatial')
+
+NYEv_points.ppp <- ppp(x = NYEv_points@coords[,1],
+                       y = NYEv_points@coords[,2],
+                       window = window)
+
+# plot it
+NYEv_points.ppp %>%
+  plot(.,pch=20,cex=0.5, 
+       main="EVpoints in New York City")
+```
+
+### Ripley's K
+
+why Ripley's K here is that Quadrat Analysis depends on the size of grid we set and the number of results may be very small that will influent the accuray of Quadrat Analysis. do the Ripley's K to find a suitable radius that is considered as gathering
+
+```{r}
+
+#K <- NYEv_points.ppp %>%
+#  Kest(., correction="border") %>%
+#  plot()
+
+#Kval <- as.data.frame(Kest(NYEv_points.ppp, correction = "Ripley"))
+
+```
+
+it takes a long time to run the Ripleys'K on my computer and keep run to no end, so I try another way to find the eps and min points. extract the points from df and use KNN to find the eps and minpts. here k is firstly set to 15 to have a try and then try 30.
+
+```{r}
+NYEv_pointsDB <- NYEv_points %>%
+  coordinates(.)%>%
+  as.data.frame()
+
+NYEv_pointsDB %>%
+  dbscan::kNNdistplot(.,k=30)
+```
+
+### DBSCAN
+
+the reason to use DBSCAN is that reply's K only shows whether there is a cluster but show nothing about where the cluster happen, that is what DBSCAN can do instead.
+
+eps ,which is the knee of the curve, is at about 2000, and the main points is set to 30, then do the DBSCAN find that 2000km maybe too far that the whole NewYork is defined as clustering, so try smaller number of eps.finally find 800 maybe a good example.
+
+```{r}
+DB <- NYEv_pointsDB %>%
+  fpc::dbscan(.,eps = 800, MinPts = 30)
+
+plot(DB, NYEv_pointsDB, main = "DBSCAN Output", frame = F)
+plot(NYdistricts$geometry, add=T)
+```
+
+The result shows that there is some cluster of Evictions in NewYork City in north and south area.
+
+then I would like to show the output in a more clear way so I am going to do another polt.first is to input the cluster into df
+
+```{r}
+NYEv_pointsDB <- NYEv_pointsDB %>%
+  mutate(dbcluster = DB$cluster)
+```
+
+create some polygons around the clustered points
+
+```{r}
+NYEv_plot <- NYEv_pointsDB %>%
+  group_by(dbcluster) %>%
+  dplyr::mutate(hull = 1:n(),
+  hull = factor(hull, chull(coords.x1, coords.x2)))%>%
+  arrange(hull)
+```
+
+delete zero because the number zero means nothing
+
+```{r}
+NYEv_plot <- NYEv_plot %>%
+  filter(dbcluster >=1)
+```
+
+### make a map
+
+when I try to use tmap to directly plot the map here, it shows error and says that "Object NYEv_plot is neither from class sf, stars, Spatial, nor Raster."So here I add a procedure to make the NYEv_plot data into sf so that can be plotted and the CRS is also set to 32118.
+
+```{r}
+NYEv_plot2 <- NYEv_plot %>%
+  st_as_sf(., coords = c("coords.x1", "coords.x2"),
+           crs = 32118)
+
+```
+
+finally use tmap to plot the map
+
+```{r}
+# find colours
+colours<- get_brewer_pal("Set1", n = 10)
+
+tmap_mode("plot")
+tm_shape(NYdistricts)+
+  tm_fill(col = "blue",alpha = 0.05)+
+  tm_borders(lty = 2)+
+tm_shape(NYEv_plot2)+
+  tm_dots(col = "dbcluster",  palette = colours ,size = 0.02,style="cat")+
+tm_layout(title = "New York Evictions clustering",
+          title.position=c("left","top"),title.size=1)+
+tm_legend(text.size =0.8,title.size=0.8) 
+
+
+```
+
+## reflection
+
+the results shows that there is some spatial patterns of eviction in NewYork in 2020, and they are almost in northern and southern. but there is also some disadvantage in my analysis. For example, in the step of DBSCAN, the final value of eps and min points are set after my test， not come from perivous plot. Because the results of Reley's K and KNN shows NewYork is all cluster which means nothing. 
+
+
+
+## Discussion
+the result do show there is some clusterings of evictions in New York, which answer the question set before. but there may be some further work I could do to enrich this project.the other work I can do may be that to try the different year's data to see if the results is the same.If I have more detailed data in district, like the borough's longitude and latitude, I may try to go deeper in the clustering analysis of different borough in north and south New York City, which have significant spatial partten. also the factors of why there is eviction cluster in north and south part can also be analysis.
+
+
+
