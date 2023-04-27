@@ -1,17 +1,4 @@
----
-title: "Name: Yujing Ding"
-author: 
-- |
-    | Student number: 22097721
-date: "16/12/22"
-output: html_document
----
 
-# Originality declaration
-
-I, [**Yujing Ding**], confirm that the work presented in this assessment is my own. Where information has been derived from other sources, I confirm that this has been indicated in the work.
-
-date: [16/12/2022]
 
 # Initial project scope
 
@@ -603,7 +590,7 @@ tm_shape(obgro_msoa2) +
 From my analysis results, there are some defects as follows:
 - First of all, the goodness of fit of the OLS model needs to be mentioned. The value of the R square is not too high, which means that I may have overlooked other important variables, leading to the insufficient interpretation of my independent variable to the dependent variable. I think obesity may also be related to the frequency of people's exercise and other factors, but I have not included this part of the appropriate data.
 - Secondly, there is a problem of multicollinearity in my data. I think this is an oversight when I create variables. I did not consider that the contents embodied by fat and saturate are very similar in nature, which may be due to my lack of understanding of saturate. And I have never solved the problem of collinearity. If I have more time, I want to try to add other variables to build the model while removing the saturate.
-- In addition, there is spatial autocorrelation in my model. I think this may be because food promotion in different regions will attract people nearby to buy or for other reasons. There is no better solution at present. But I am willing to continue to try to solve it if time is enough.
+- In addition, there is spatial autocorrelation in my model. I think this may be because food promotion in different regions will attract people nearby to buy or for other reasons. There is no better solution at present. But I am willing to continue to try to solve it if there is enough time.
 
 ## Discussion
 
