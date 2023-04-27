@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Bath self-driving tour guide</title>
+
+    <!-- DeckGL Library -->
+    <script src="https://unpkg.com/deck.gl@latest/dist.min.js"></script>
+
+    <!-- MapBox 2.10.0 -->
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.10.0/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.10.0/mapbox-gl.css' rel='stylesheet' />
+
+    <!-- D3.js -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script charset="utf-8" src="https://d3js.org/d3.v4.min.js"></script>
+
+    <!-- ECharts -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.1/dist/echarts.min.js"></script>
+
+    <style>
+        #container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+        }
+
+        #tooltip {
+            position: absolute;
+            visibility: hidden;
+            z-index: 2;
+            right: 0;
+            top: 0;
+            width: 25%;
+            height: auto;
+            min-height: 80px;
+            display: grid;
+            grid-template-columns: auto auto;
+            grid-template-rows: auto;
+            grid-template-areas:
+                "title icon "
+                "item-a item-a "
+                "item-b item-b "
+                "item-d item-d "
+                "item-e item-e "
+                "item-c item-c ";
+            background-color: rgba(255, 255, 255, 0.85);
+            border: 10px solid #ffffff00;
+        }
+
+        .title {
+            grid-area: title;
+            font-weight: bold;
+            margin: 5px;
+        }
+
+        .item-a {
+            grid-area: item-a;
+            margin: 5px;
+        }
+
+        .item-b {
+            grid-area: item-b;
+            margin: 5px;
+        }
+
+        .item-d {
+            grid-area: item-d;
+            margin: 5px;
+        }
+
+        .item-e {
+            grid-area: item-e;
+            margin: 5px;
+        }
+
+        #item-c {
+            grid-area: item-c;
+            margin: 2px;
+            height: 300px;
+            max-width: 80%
+        }
+
+        .icon {
+            grid-area: icon;
+            margin: 10px;
+            max-width: 20%;
+            height: auto;
+            place-self: right;
+        }
+
+        #popup {
+            position: absolute;
+            visibility: hidden;
+            z-index: 2;
+            right: 0;
+            top: 0;
+            width: 25%;
+            height: auto;
+            min-height: 80px;
+            display: grid;
+            grid-template-columns: auto auto;
+            grid-template-rows: auto;
+            grid-template-areas:
+                "title icons"
+                "item-a item-a "
+                "item-b item-b "
+                "item-d item-d "
+                "item-e item-e "
+                "item-cs item-cs ";
+            background-color: rgba(255, 255, 255, 0.85);
+            border: 10px solid #ffffff00;
+        }
+
+        #item-cs {
+            grid-area: item-cs;
+            margin: 2px;
+        }
+
+        .icons {
+            grid-area: icons;
+            margin: 10px;
+            max-width: 30%;
+            height: auto;
+            place-self: right;
+        }
+
+        #window {
+            position: absolute;
+            z-index: 2;
+            right: 0;
+            top: 0;
+            width: 26.5%;
+            height: auto;
+            min-height: 100px;
+            display: grid;
+            grid-template-columns: auto;
+            grid-template-rows: auto;
+            grid-template-areas:
+                "title"
+                "item-a"
+                "item-b"
+                "item-d"
+                "item-e"
+                "item-c";
+            background-color: rgba(255, 255, 255, 0.85);
+            border: 3px solid #ffffffbf;
+        }
+
+        #weathertable {
+            width: 400px;
+            margin: auto;
+            background-image: url("bathweather_background.png");
+            background-size: cover;
+            margin-top: 20px;
+        }
+
+        #weathertable td {
+            height: 25px;
+            background-color: #ffffff28;
+        }
+
+        #weathertable tr th {
+            text-align: center;
+            font: bold 11pt Verdana;
+            height: 20px;
+            color: #000000;
+            width: 200px;
+            background-color: #3575b556;
+        }
+
+        #weathertable tr td.Index {
+            text-align: center;
+            font: normal 10pt Verdana;
+        }
+
+        #weathertable tr td.Value {
+            text-align: center;
+            font: normal 12pt Verdana;
+        }
+
+        h1 {
+            margin: 10px 0 0 0;
+            font: bold 15pt Verdana;
+            place-self: center;
+        }
+
+        p {
+            margin: 7px 0 5px 0;
+            font: normal 10pt Verdana;
+        }
+
+    </style>
+
+</head>
+
+<body>
+    <div id="container">
+        <div id="window">
+            <h1 id="title">Bath Weather Data</h1>
+            <p>Weather data provided by <a href="https://open-meteo.com/">Open-Meteo API</a>.</p>
+            <p>Carpark and charging points data provided by <a
+                    href="http://www.bathhacked.org/datasets/">Bath:Hacked</a>.</p>
+
+            <table id="weathertable">
+                <tr>
+                    <th>Index</th>
+                    <th>Value</th>
+                </tr>
+                <tr>
+                    <td class="Index">Time</td>
+                    <td class="Value" id="time">Data</td>
+                </tr>
+                <tr>
+                    <td class="Index">Weather</td>
+                    <td class="Value" id="weather">Data</td>
+                </tr>
+                <tr>
+                    <td class="Index">Temperature</td>
+                    <td class="Value" id="temperature">Data</td>
+                </tr>
+                <tr>
+                    <td class="Index">Wind Speed</td>
+                    <td class="Value" id="windspeed">Data</td>
+                </tr>
+                <tr>
+                    <td class="Index">Wind Direction</td>
+                    <td class="Value" id="winddirection">Data</td>
+                </tr>
+
+
+            </table>
+
+        </div>
+
+        <div id="tooltip"></div>
+        <div id="popup"></div>
+        <div id="map"></div>
+    </div>
+
+
+</body>
+
+<script>
+    // Set API key here
+    const API_TOKEN_Mapbox = 'pk.eyJ1IjoieXVqaW5nMTIxOCIsImEiOiJjbGQxbGs4MXYxM3I2M3JvMXplMHRpM2xtIn0.ULHJ5bm8X_WZoXsJvypHtQ';
+    mapboxgl.accessToken = API_TOKEN_Mapbox;
+
+    // Set the parameters when entering the page initially, including coordinates, zoom level, slope, etc
+    const INITIAL_VIEW_STATE = {
+        longitude: -2.359904,
+        latitude: 51.375801,
+        zoom: 13,
+        bearing: 0,
+        pitch: 40,
+    };
+
+    // Set the color scale function to display the color according to the occupancy rate of the parking lot. 
+    // The color of the empty parking lot is green, and the color of the full parking lot is red.
+    const colorScaleFunction = d3.scaleThreshold()
+        .domain([15, 30, 45, 70, 85]) //percentage of car park occupancy
+        .range([ //RGB format
+            [0, 255, 0],
+            [128, 255, 0],
+            [255, 255, 0],
+            [255, 128, 0],
+            [255, 0, 0],
+            [153, 0, 0],
+        ]);
+
+    // Set the parameters of the initial map, including the background map api, which can be changed to dark or light.
+    const map = new mapboxgl.Map({
+        container: 'map',
+        style: 'mapbox://styles/mapbox/streets-v12', 
+        interactive: true,
+        center: [INITIAL_VIEW_STATE.longitude, INITIAL_VIEW_STATE.latitude],
+        zoom: INITIAL_VIEW_STATE.zoom,
+        bearing: INITIAL_VIEW_STATE.bearing,
+        pitch: INITIAL_VIEW_STATE.pitch
+    });
+
+    // loading maps
+    map.on('load', () => {
+
+        ///////////////////// first layer: bath car park api //////////////////////////
+
+        const firstLabelLayerId = map.getStyle().layers.find(layer => layer.type === 'symbol').id;
+
+        map.addLayer({
+            'id': 'mapid',
+            'source': 'composite',
+            'source-layer': 'building',
+            'filter': ['==', 'extrude', 'true'],
+            'type': 'fill-extrusion',
+            'minzoom': 15,
+            'paint': {
+                'fill-extrusion-color': '#aaa',
+                'fill-extrusion-height': ["get", "height"],
+                'fill-extrusion-base': ["get", "min_height"],
+                'fill-extrusion-opacity': 0.0
+            }
+        },
+            firstLabelLayerId
+        );
+
+        // deck.gl
+        const bathcarpark = new deck.MapboxLayer({
+            id: "bathcarpark",
+            // bath living car park api
+            data: "https://data.bathhacked.org/api/datasets/8/rows?page=1&per_page=15",
+            dataTransform: d => d.data,
+            type: deck.ScatterplotLayer,
+            pickable: true, 
+            opacity: 0.4,
+            stroked: true,
+            filled: true,
+            radiusScale: 0.4,
+            radiusMinPixels: 5,
+            radiusMaxPixels: 25,
+            lineWidthMinPixels: 1,
+            lineWidthMaxPixels: 2,
+            getPosition: (d) => [d.location.longitude, d.location.latitude, 5],
+            // set the size of circles based on its total capacity
+            getRadius: (d) => d.capacity,
+            // set the colour according to the places it still available now
+            getFillColor: (d) => colorScaleFunction(d.percentage),
+            getLineColor: (d) => [0, 0, 30, 0.5],
+            // add tooltip and show the tooltip when onhover
+            onHover: ({ object }, info) => {
+                (isHovering = Boolean(object));
+                if (isHovering == true) {
+                    console.log(object);
+                    showTooltip(info, object);
+                    map.getCanvas().style.cursor = 'pointer';
+                }
+                else {
+                    hideTooltip(info);
+                    map.getCanvas().style.cursor = 'grab';
+                }
+            },
+
+        })
+
+        map.addLayer(bathcarpark);
+        map.__deck.props.getCursor = () => map.getCanvas().style.cursor; 
+
+        const timer = setInterval(() => {
+            bathcarpark.setProps({ data: "https://data.bathhacked.org/api/datasets/8/rows?page=1&per_page=15" });
+            console.log('Data Updated');
+        }, 600000); //API called and refresh every 10 min
+
+        /////////////////// second layer: electricity vehicle charging position //////////////////
+
+        const secondLabelLayerId = map.getStyle().layers.find(layer => layer.type === 'symbol').id;
+        map.addLayer({
+            'id': 'secondmapid',
+            'source': 'composite',
+            'source-layer': 'building',
+            'filter': ['==', 'extrude', 'true'],
+            'type': 'fill-extrusion',
+            'minzoom': 15,
+            'paint': {
+                'fill-extrusion-color': '#aaa',
+                'fill-extrusion-height': ["get", "height"],
+                'fill-extrusion-base': ["get", "min_height"],
+                'fill-extrusion-opacity': 0.0
+            }
+        },
+            secondLabelLayerId
+        );
+
+        const ICON_MAPPING = {
+            marker: { x: 0, y: 0, width: 128, height: 128, mask: true }
+        };
+
+        const bathcharging = new deck.MapboxLayer({
+            id: "bathcharging",
+            data: "https://data.bathhacked.org/api/datasets/100/rows?page=1&per_page=15",
+            dataTransform: d => d.data,
+            type: deck.IconLayer,
+            pickable: true, 
+            iconAtlas: 'https://raw.githubusercontent.com/visgl/deck.gl-data/master/website/icon-atlas.png',
+            iconMapping: ICON_MAPPING,
+            sizeScale: 5,
+            sizeMinPixels: 10,
+            sizeMaxPixels: 50,
+            alphaCutoff: 0,
+            getIcon: d => 'marker',
+            getPosition: (d) => [d.location.longitude, d.location.latitude, 5],
+            getSize: 5,
+            getColor: [255, 69, 0, 255],
+            onHover: ({ object }, info) => {
+                (isHovering = Boolean(object));
+                if (isHovering == true) {
+                    console.log(object);
+                    showpopup(info, object);
+                    map.getCanvas().style.cursor = 'pointer';
+                }
+                else {
+                    hidepopup(info);
+                    map.getCanvas().style.cursor = 'grab';
+                }
+            },
+
+        })
+
+        map.addLayer(bathcharging);
+        map.__deck.props.getCursor = () => map.getCanvas().style.cursor; 
+
+        const timer2 = setInterval(() => {
+            bathcharging.setProps({ data: "https://data.bathhacked.org/api/datasets/100/rows?page=1&per_page=15" });
+            console.log('Data Updated');
+        }, 600000); 
+
+    })
+
+    ////////////////////// second layer topup function ///////////////////////////
+
+    function hidepopup() {
+        d3.select("#popup").style("visibility", "hidden");
+    }
+
+    function showpopup(info, object) {
+        d3
+            .select("#popup")
+            .style("top", info.center.y + 3 + "px")
+            .style("left", info.center.x + "px")
+            .style("visibility", "visible")
+            .style("pointer-events", "none")
+            .html(`<img src="https://www.svgrepo.com/show/98438/car-battery-charging.svg" class='icons'/>
+    <p class='title'> Site Name: <br/> ${object.site_name}</p>
+             <p class='item-a'> Address: ${object.street_address}</p>
+             <p class='item-b'> Connection Type: ${object.connection_type}</p>
+             <p class='item-d'> Usage: ${object.usage}</p>
+             <p class='item-e'> Level: ${object.level}</p>
+             <div id='item-cs'></div>`);
+    }
+
+    ////////////////////// first layer tooltip function ///////////////////////////
+
+    function hideTooltip() {
+        d3.select("#tooltip").style("visibility", "hidden");
+    }
+
+    function showTooltip(info, object) {
+        d3
+            .select("#tooltip")
+            .style("top", info.center.y + 3 + "px")
+            .style("left", info.center.x + "px")
+            .style("visibility", "visible")
+            .style("pointer-events", "none")
+            .html(`<img src="https://www.svgrepo.com/show/83698/car-parking.svg" class='icon'/>
+            <p class='title'> Name: <br/> ${object.name}</p>
+            <p class='item-a'> Last Update: ${object.lastupdate}</p>
+            <p class='item-b'> Status: ${object.status}</p>
+            <p class='item-d'> Capacity: ${object.capacity}</p>
+            <p class='item-e'> Occupancy: ${object.occupancy}</p>
+            <div id='item-c'></div>`);
+        chart(object);
+    }
+
+    function chart(dataset) {
+        var myChartEchart = echarts.init(document.getElementById("item-c"));
+        var option = {
+            tooltip: {
+                formatter: '{a} <br/>{b} : {c}%'
+            },
+            series: [
+                {
+                    name: 'occupancy(%)',
+                    type: 'gauge',
+                    progress: {
+                        show: true
+                    },
+                    detail: {
+                        valueAnimation: true,
+                        formatter: '{value}'
+                    },
+                    data: [
+                        {
+                            value: dataset.percentage,
+                            name: 'occupancy(%)'
+                        }
+                    ]
+                }
+            ]
+        };
+        myChartEchart.setOption(option);
+    }
+
+    ///////////////////// third layer : bath weather api ////////////////////////
+
+    var Wurl = "https://api.open-meteo.com/v1/forecast?latitude=51.38&longitude=-2.36&timezone=GMT&current_weather=true";
+
+    d3.json(Wurl, function (WData) {
+
+        console.log(WData);
+
+        // change weathercode into actual meaning of the code: weather status, 
+        // reference of transforming rules are here: https://open-meteo.com/en/docs
+        setWeather = function (value) {  
+            var show;
+            if (value = 0) { show = "clear sky"; } else
+            if (value = 1) { show = "mainly clear"; } else
+            if (value = 2) { show = "partly cloudy"; } else
+            if (value = 3) { show = "overcast"; } else
+            if (value <= 50) { show = "fog"; } else
+            if (value <= 55) { show = "drizzle"; } else
+            if (value <= 57) { show = "freezing drizzle"; } else
+            if (value = 61) { show = "slight rain"; } else
+            if (value = 63) { show = "moderate rain"; } else
+            if (value = 65) { show = "heavy rain"; } else
+            if (value <= 67) { show = "freezing rain"; } else
+            if (value = 71) { show = "slight snow fall"; } else
+            if (value = 73) { show = "moderate snow fall"; } else
+            if (value = 75) { show = "heavy snow fall"; } else
+            if (value = 77) { show = "snow grains"; } else
+            if (value <= 82) { show = "rain showers"; } else
+            if (value <= 86) { show = "snow showers"; } else
+            if (value = 95) { show = "thunderstorm"; } else
+            if (value <= 99) { show = "thunderstorm with hail"; }
+            return show;
+        }
+
+        // create a variable contains weather content
+        var Weather = [ 
+            { "name": "time", "value": WData.current_weather.time },
+            { "name": "weather", "value": WData.current_weather.weathercode },
+            { "name": "temperature", "value": WData.current_weather.temperature },
+            { "name": "windspeed", "value": WData.current_weather.windspeed },
+            { "name": "winddirection", "value": WData.current_weather.winddirection }
+        ];
+
+        // list the weather code separately to make changes
+        var changeweather = [ 
+            { "name": "weather", "value": WData.current_weather.weathercode },
+        ];
+
+        console.log(Weather);
+
+        // change the data in the weather table into updated one according to weather API
+        Weather.forEach(function (weather) { 
+            document.getElementById(weather.name).innerHTML = weather.value;
+        });
+
+        changeweather.forEach(function (weathercode) { 
+
+            document.getElementById(weathercode.name).innerHTML = weathercode.value;
+            var weathername = setWeather(weathercode.value);  
+            document.getElementById(weathercode.name).innerHTML = weathername;
+
+        });
+
+    });
+
+</script>
+
+</html>
