@@ -1,0 +1,635 @@
+---
+title: "Name: Yujing Ding"
+author: 
+- |
+    | Student number: 22097721
+date: "16/12/22"
+output: html_document
+---
+
+# Originality declaration
+
+I, [**Yujing Ding**], confirm that the work presented in this assessment is my own. Where information has been derived from other sources, I confirm that this has been indicated in the work.
+
+date: [16/12/2022]
+
+# Initial project scope
+
+With more and more diversified dietary choices, obesity has gradually become a social phenomenon. People can easily buy their favorite foods with high calories,sugar etc. in supermarkets, rather than ordinary healthy vegetables. Therefore, I choose to explore whether the obesity rate in various regions of London is related to the amount of unhealthy food people buy in department stores.
+
+**research question** 
+My research question is: Is there a relationship between food composition people buy in grocery and obesity in London?
+
+
+**Null hypothesis**
+There is no linear relationship between people's diet and obesity rate.
+
+**data I have**
+
+The datasets and information I now have are:
+
+-   Atlas of msoa
+There are various data related to people in London MSOA, such as population/housing price, including obesity rate, which is our dependent variable
+
+-   London GIS boundary
+It contains the shapefile of London constituency/borough/msoa. I will need msoa to draw a map
+
+-   Department Store Data of Tesco Supermarket
+In this data set, we have department store data divided by different boundaries in different months. I chose the MSOA data in December, because I think that at the end of the year, there are Christmas and other festivals, and there are more activities that make it easier for people to consume some unhealthy food to satisfy themselves.
+
+### library()
+Load all the packages that may (or may not) be used in the next analysis.
+```{r}
+library(tidyverse)
+library(tmap)
+library(geojsonio)
+library(plotly)
+library(rgdal)
+library(broom)
+library(mapview)
+library(crosstalk)
+library(sf)
+library(sp)
+library(spdep)
+library(car)
+library(fs)
+library(janitor)
+library(tidypredict)
+library(tidymodels)
+library(ggplot2)
+library(dplyr)
+library(corrr)
+library(performance)
+library(spatialreg)
+library(lmtest)
+library(spgwr)
+```
+### Data input
+When I observed the dataset before, I found that in the MSOA dataset, the column names occupied the first three rows, while I only needed one row. Therefore, I skipped the first two rows when importing files. In addition, I changed the coordinate reference systems of London MSOA shapefile data to British CRS: 27700.
+```{r}
+# read in obesity data in csv 
+msoa_obesity <- read_csv(here::here("data",
+                                    "msoa_data.csv"),skip=2)
+
+# read in msoa data
+lon_msoa <- st_read(here::here("data",
+                               "statistical-gis-boundaries-london",
+                               "ESRI",
+                               "MSOA_2011_London_gen_MHW.shp")) %>%
+  st_transform(.,27700)
+
+# read in the grocery data
+msoa_grocery <- read_csv(here::here("data",
+                                    "Dec_msoa_grocery.csv"))
+```
+we can see in the enviroment at right top of the project, there is 983 MSOA in London, and obesity data has 4838 observation, so maybe I need to filter it later.
+
+#### have a quick look at the map
+After importing the map initially, check it quickly to ensure there is no "monkey" in the map.
+```{r}
+qtm(lon_msoa)
+```
+Well, there's no strange area
+
+## data wrangling
+Before formal analysis, I need to clean up my data to ensure that they are effective and reasonable. <br>
+<br>
+Before formal analysis, I need to clean up my data to ensure that they are effective and reasonable. In this part, I will do the following: <br>
+- Clean Column Names
+- Select the columns I need
+- Handle missing values
+- Merge data
+- And draw a rough map
+
+#### data select and clean
+When I first selected the column name, it reported an error "error：Can't subset columns that don't exist", so I realized that there is a space in column name. So I chose the column name again.
+```{r}
+msoa_obesity <- msoa_obesity %>% 
+  clean_names() %>% 
+  dplyr::select("msoa_code","msoa_name","percentage_of_the_population_aged_16_with_a_bmi_of_30_modelled_estimate_2006_2008") %>% 
+  dplyr::rename(obesity_percentage="percentage_of_the_population_aged_16_with_a_bmi_of_30_modelled_estimate_2006_2008")
+
+msoa_grocery <- msoa_grocery %>% 
+  clean_names() %>% 
+  dplyr::select("area_id","fat","carb","saturate","sugar")
+
+```
+#### deal with na value
+After viewing the data after the above filtering, I found that there are some NA values in the msoa_obesitity data, so I will remove them here.
+```{r}
+msoa_obesity <- msoa_obesity %>% 
+  na.omit()
+```
+Observe the environment in the upper right corner of the project again. After removing the null value, the observations of msoa_obesity decreased from 4838 to 983, which matched the other two data sets.
+
+#### join the data
+Connect the three datasets with the keyword, the same MSOA ID.
+
+```{r}
+obesity_grocery <- msoa_obesity %>% 
+  left_join(., 
+            msoa_grocery,
+            by = c("msoa_code" = "area_id"))
+
+obgro_msoa <- lon_msoa %>% 
+  left_join(., 
+            obesity_grocery,
+            by = c("MSOA11CD" = "msoa_code"))
+```
+An error was encountered when polt the map "Error: Object obgro_msoa is neither from class sf, stars, Spatial, nor Raster."Then I found that the shapefile was not placed on the left when I connected data on the left, which caused the loss of the content in the dataset.<br>
+Back to left_join to change the position of the "lon_msoa" and "obesity_grocery".
+#### plot map
+Here, my data processing is basically completed. I would like to check their status.
+```{r}
+# quick look at obesity
+qtm(obgro_msoa,
+    fill = "obesity_percentage",
+    fill.palette = "Blues")
+
+
+# look other data
+tmap_mode("plot")
+
+tm1 <- tm_shape(obgro_msoa) + 
+  tm_polygons("carb",
+              palette="PuBu")+
+  tm_legend(show=T,legend.width=0.5,legend.height=0.5)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(a)", position=c(0,0.85), size=1.5)
+
+tm2 <- tm_shape(obgro_msoa) + 
+  tm_polygons("fat",
+              palette="PuBu") + 
+  tm_legend(show=T,legend.width=0.5,legend.height=0.5)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(b)", position=c(0,0.85), size=1.5)
+
+tm3 <- tm_shape(obgro_msoa) + 
+  tm_polygons("saturate", 
+              palette="PuBu") + 
+  tm_legend(show=T,legend.width=0.5,legend.height=0.5)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(c)", position=c(0,0.85), size=1.5)
+
+tm4 <- tm_shape(obgro_msoa) + 
+  tm_polygons("sugar", 
+              palette="PuBu") + 
+  tm_legend(show=T,legend.width=0.4,legend.height=0.4)+
+  tm_layout(frame=FALSE)+
+  tm_credits("(d)", position=c(0,0.85), size=1.5)
+
+
+t=tmap_arrange(tm1, tm2, tm3, tm4, ncol=2)
+
+t
+
+# ?tmap::tm_legend
+```
+OK, there is basically no problem with the above data. Next, I will further analyze my problem.
+
+## data analysis
+In this part, I will mainly complete linear regression. My null hypothesis is that people's diet has nothing to do with obesity, so my dependent variable y is the obesity rate, and my independent variable is the consumption of unhealthy ingredients in the grocery store, such as car, fat, sugar, and saturate.
+
+#### scatter plot
+Before the regression, I would like to simply know whether there are some relationships between these independent variables and dependent variables, and find them quick through a scatter plot.
+
+```{r}
+# carb & obesity
+q1 <- qplot(x = `carb`, 
+           y = `obesity_percentage`, 
+           data = obgro_msoa)
+
+q1 + stat_smooth(method="lm", se=FALSE, size=1) + 
+  geom_jitter()
+
+# sugar & obseity
+q2 <- qplot(x = `sugar`, 
+           y = `obesity_percentage`, 
+           data = obgro_msoa)
+
+q2 + stat_smooth(method="lm", se=FALSE, size=1) + 
+  geom_jitter()
+
+# fat & obseity
+q3 <- qplot(x = `fat`, 
+           y = `obesity_percentage`, 
+           data = obgro_msoa)
+
+q3 + stat_smooth(method="lm", se=FALSE, size=1) + 
+  geom_jitter()
+
+# saturate & obesity
+q4 <- qplot(x = `saturate`, 
+           y = `obesity_percentage`, 
+           data = obgro_msoa)
+
+q4 + stat_smooth(method="lm", se=FALSE, size=1) + 
+  geom_jitter()
+
+```
+The results show that, except for carb, other independent variables do not seem to have such obvious relationship, but it doesn't matter. Next, I will use a more accurate way to measure their relationship.
+
+### OLS regression
+The results show that, except for card, other independent variables do not seem to have such obvious relationship, but it doesn't matter. Next, I will use a more accurate way to measure their relationship.
+
+```{r}
+model1 <- obgro_msoa %>%
+  lm(obesity_percentage ~ carb + fat + sugar + saturate,
+     data=.)
+
+summary(model1)
+tidy(model1)
+```
+It can be seen preliminarily that except for the variable sugar, the p values of other variables are far less than 0.05, which is significant.<br>
+So I may consider removing sugar in the next model to see whether the model fits better.
+
+#### tidy the model
+Then, I get the r-square of the model here
+```{r}
+glance(model1)
+```
+The value of r square here is 0.38. Unfortunately, this is not a very good value... This figure indicates that the independent variable in my model only explains 38% of the change of the dependent variable. The closer the r square is to 1, the better the explanatory power of the selected independent variable to the dependent variable.<br>
+So here maybe the place I need to improve.
+
+#### try a regresion without sugar
+Based on the results shown above, I decided to remove sugar from the model to see whether the adjusted r-squared has increased or decreased, so as to determine whether the existence of sugar has an effect on my model.
+
+```{r}
+model2 <- obgro_msoa %>%
+  lm(obesity_percentage ~ carb + fat + saturate,
+     data=.)
+
+summary(model2)
+
+tidy(model2)
+glance(model2)
+```
+the adj.r-squared rise from 0.376 to 0.377.Although this is a small improvement, I still decided to give up sugar,so the final independent variable is fat, carb, saturate.
+```{r}
+model3 <- obgro_msoa %>%
+  lm(obesity_percentage ~ carb + fat,
+     data=.)
+
+summary(model3)
+
+tidy(model3)
+glance(model3)
+
+```
+According to the following conclusion, fat and saturate have collinearity. I decided to try to remove saturate from the model again, but the r side of the adjustment decreased. Therefore, this is just a common sense. I still keep saturate in my model.<br>
+<br>
+Next, I will continue to verify whether my model meets the five assumptions of linear regression.
+
+### Assumption 1
+There is a linear relationship between the dependent and independent variables.<br>
+Here, I will draw histograms of these variables to check whether the variables are normally distributed. If they are normally distributed, it means that there may be some linear relationship between variables.
+
+```{r}
+# obesity_percentage
+ggplot(obgro_msoa, aes(x=`obesity_percentage`)) + 
+  geom_histogram(aes(y = ..density..),
+                 binwidth = 5) + 
+  geom_density(colour="red", 
+               size=1, 
+               adjust=1)
+
+# carb
+ggplot(obgro_msoa, aes(x=`carb`)) +
+  geom_histogram(aes(y = ..density..),
+                 binwidth = 0.1) + 
+  geom_density(colour="red",
+               size=1, 
+               adjust=1)
+
+# fat
+ggplot(obgro_msoa, aes(x=`fat`)) +
+  geom_histogram(aes(y = ..density..),
+                 binwidth = 0.1) + 
+  geom_density(colour="red",
+               size=1, 
+               adjust=1)
+
+# saturate
+ggplot(obgro_msoa, aes(x=`saturate`)) +
+  geom_histogram(aes(y = ..density..),
+                 binwidth = 0.1) + 
+  geom_density(colour="red",
+               size=1, 
+               adjust=1)
+```
+Good. These figures seem to be normally distributed.Otherwise, I may process the variable to make it normally distributed, for example, using Tukey’s ladder of transformations to get log.
+
+### Assumption 2 
+The residuals in your model should be normally distributed.<br>
+Check whether the residual of my model conforms to the normal distribution.
+```{r}
+model2_data <- model2 %>%
+  augment(., obgro_msoa)
+
+#plot residuals
+model2_res <- model2_data %>%
+dplyr::select(.resid)%>%
+  pull()%>%
+  qplot()+
+  geom_histogram()
+
+obgro_msoa <- obgro_msoa %>%
+  mutate(model2_res = residuals(model2))
+
+```
+Good. The residuals are also normally distributed, so I don't need any adjustment here.
+
+### Assumption 3 
+No Multicolinearity in the independent variables.<br>
+
+If multiple variables are highly correlated, we are actually recalculating the influence of these variables and exaggerating their explanatory power. So here I want to check whether there is multi-collinearity between variables.
+
+#### correlation map
+First, we can have a visual understanding through a simple correlation graph.
+```{r}
+Correlation <- obgro_msoa %>%
+  st_drop_geometry()%>%
+  dplyr::select(obesity_percentage,
+                fat,
+                carb,
+                saturate) %>%
+  correlate() %>%
+  # just focus on GCSE and house prices
+  focus(-obesity_percentage, mirror = TRUE) 
+
+
+#visualise the correlation matrix
+rplot(Correlation)
+```
+Result display that fat and saturate may be high multi-collinearity.In order to get the data of variance inflation factor more accurately, the VIF test is conducted to check whether the VIF value is below 10, which determines whether I should exclude collinear variables.
+#### VIF test
+```{r}
+vif(model2)
+```
+
+all VIF values are below 10, but fat and saturate have a high number, if have more time consider to leave one of them in the model.<br>
+Here, I go back to the previous place where the model was built and try to exclude one of the collinear variables saturate from the model to avoid multi-collinearity. But the results show that when one variable is excluded, the ajust r-squared of my model adjustment decreases. Therefore, although the VIF values are a little high, I still choose to keep them.
+
+### Assumption 4
+Homoscedasticity.<br>
+The test of the homoscedasticity is carried out here because if there is no constant variance in the residual, the parameter estimation may be wrong, and their significance estimation may also be wrong. So in order to ensure that the model is correct, there is a test of the homoscedasticity.
+
+```{r}
+check_model(model2, check="all")
+```
+
+The results here show that:
+- Figure 1: model pridicted line is resemble observed data line.
+- Figure 2/3: reference line is almost flat and horizontal.
+- Figure 4: points are all inside the contour lines.
+- Figure 5: there maybe a multi-collinearity between fat and saturate.
+- Figure 6: dots are almostly all fall along the line.
+
+
+### Assumption 5
+Independence of Errors.<br>
+In the assumption of linear regression, the residual value (error) in the model shall not be correlated in any way. If we express autocorrelation, it indicates that we may have other things not taken into account in the model.
+
+#### Durbin-Watson
+DW test is the most common method to test autocorrelation in common data. Therefore, we first conduct a DW test for our model.
+```{r}
+DW <- durbinWatsonTest(model2)
+tidy(DW)
+```
+DW value is 1.02.Although it is also fall between 1 and 3, the value is not particularly close to 2, so there may be some autocorrelation.
+
+#### spatial-autocorrelation
+In addition, our data is also spatial data. In addition to the common dw test, we can view the spatial methods for autocorrelation analysis.<br>
+there comes a "Error: Fill argument neither colors nor valid variable name(s)".so I then find there is no columns of residual back to add it.
+```{r}
+tmap_mode("plot")
+
+qtm(obgro_msoa, fill = "model2_res")
+```
+The map above shows that there may be a certain pattern in the northwest corner of London, so next, I will use a more accurate Moran test to test the spatial autocorrelation.
+
+#### moran's I
+In calculating the Moran index, I need to know the centroids of each msoa and what are their neighbors, and calculate the spatial weight matrix according to the definition of neighbors to finally get the Moran index I want.
+##### calculate the centroids
+Calculate the centroid of each msoa, so you can use the centroid to define neighbors later.plot the centroid diagram to check whether there is any abnormality
+```{r}
+coordsW <- obgro_msoa %>%
+  st_centroid()%>%
+  st_geometry()
+
+plot(coordsW)
+```
+##### create neighbours
+When defining neighbors, I chose to use the knn method, using the latest three msoas as neighbors, because, generally, people will only go to some places close to themselves to purchase food, and will not go to all the surrounding msoa or far places. So I didn't choose queen or rook mode.
+```{r}
+# caculate nearest neighbours
+knn_msoa <- coordsW %>%
+  knearneigh(., k=3)
+
+msoa_knn <- knn_msoa %>%
+  knn2nb()
+
+#plot it
+plot(msoa_knn, st_geometry(coordsW), col="blue")
+```
+this is the map of my neighbours.
+
+##### weight metrix
+According to the neighbor I defined, I calculate the weight matrix here, and I select row summary as the calculation method.
+```{r}
+msoa.knn3_weight <- msoa_knn %>%
+  nb2listw(., style="W")
+```
+##### moran's I
+Then we calculate the Moran index to see whether there is spatial autocorrelation.
+```{r}
+knn3_neighbour <- obgro_msoa %>%
+  st_drop_geometry()%>%
+  dplyr::select(model2_res)%>%
+  pull()%>%
+  moran.test(., msoa.knn3_weight)%>%
+  tidy()
+
+knn3_neighbour
+```
+Then we calculate the Moran index to see whether there is spatial autocorrelation.
+Here the results is 0.623 shows there is spatial-autocorrelation,so next step is to deal with it .
+
+## deal with spatial-autocorrelation
+When dealing with spatial autocorrelation, first I want to view the overall autocorrelation from a global perspective.
+
+#### Lagrange Multiplier (LM) test
+Global autocorrelation has two types of model spatial lag and spatial error. In order to know which model I should use to detect, I use Lagrange Multiplier test to detect the fitness of the two models to my model.
+```{r}
+msoa.knn3_weight_row <- msoa_knn %>%
+  nb2listw(., style="W")
+
+lm.LMtests(model2, msoa.knn3_weight_row, test = c("LMerr","LMlag"))
+```
+
+the p-value is far less than 0.05 ,which is significant, so there is spatial lag and spatial error in my model. <br>
+the p-value of error and lag is the same,so compare the value of LMerr and LMlag, there are more likely to have spatial lag.
+
+#### spatial-lagged regression model
+The spatial lag is to consider the influence of the surrounding area's obesity on the study area's obesity. This index is expressed in rho, while the rho is significant.
+```{r}
+
+lag_model2_knn3 <- lagsarlm(obesity_percentage ~ carb + fat + saturate, 
+               data = obgro_msoa, 
+               nb2listw(msoa_knn, 
+                        style="W"), 
+               method = "eigen")
+
+tidy(lag_model2_knn3)
+```
+
+the p-value of rho is significant and the estimate value is 0.71 so there is the spatial-lagged.
+
+#### impact of spatial lag
+Since there is hysteresis, how much effect does the hysteresis in the model bring.
+```{r}
+weight_list <- nb2listw(msoa_knn, style="W")
+
+imp <- impacts(lag_model2_knn3, listw=weight_list)
+
+imp
+```
+
+compare this result with ols regression we can see that the overall impact of each indicator has significantly increased, and the indirect impact will be greater than the direct impact. However, it is also argued that this value cannot be compared with ols, because different definitions of neighbors may lead to different results, but it can be seen that these variables have both direct and indirect effects
+
+### Geographically Weighted Regression Models
+After the global autocorrelation test, because of non-stationarity I also want to know the local autocorrelation, so the following is Geographically Weighted Regression(GWR).
+#### bandwidth
+The value of optimal bandwidth means that the numerical percentage of all spatial cells should be applied to local regression (based on k nearest neighbors).
+```{r}
+coordsW2 <- st_coordinates(coordsW)
+
+obgro_msoa2 <- cbind(obgro_msoa,coordsW2)
+
+GWRbandwidth <- gwr.sel(obesity_percentage ~ carb + fat + saturate, 
+                  data = obgro_msoa2,
+                  coords=cbind(obgro_msoa2$X, obgro_msoa2$Y),
+                  adapt=T)
+# view the bandwidth value
+GWRbandwidth
+```
+the optimal bandwidth here is 0.0046 means there maybe 0.5% of the msoa need to do the local regression. the total msoa is 983 ,so the number is about 5.
+
+#### run the GWR model
+finally,do the GWR model.
+```{r}
+gwr.model = gwr(obesity_percentage ~ carb + fat + saturate, 
+                data = obgro_msoa2, 
+                coords = cbind(obgro_msoa2$X, obgro_msoa2$Y), 
+                adapt = GWRbandwidth,
+                hatmatrix=TRUE,
+                se.fit=TRUE)
+
+gwr.model
+```
+
+The output of the GWR model reveals the coefficients changes of the 983 MSOA in London.<br>
+
+- for example: The coefficient range of carb is from the -1.36 to the 5.77, and the general variation falls between 0.66 and 2.42.
+-  Here the value of R square (Quasi global R-squared) is 0.878 which is much higher than it in OLS.
+-  AIC value is 4242, which is not that small, far  beyond 40. Because the smaller the better.
+Disadvantages: GWR model lacks statistical robustness
+
+#### plot the results of GWR
+show the map of the results of each independent variable.
+```{r}
+# add coefficients to model
+results <- as.data.frame(gwr.model$SDF)
+names(results)
+
+obgro_msoa2 <- obgro_msoa %>%
+  mutate(coef_carb = results$carb,
+         coef_fat = results$fat,
+         coef_saturate = results$saturate)
+
+# plot carb
+tm_shape(obgro_msoa2) +
+  tm_polygons(col = "coef_carb", 
+              palette = "RdBu", 
+              alpha = 0.5)
+# plot fat
+tm_shape(obgro_msoa2) +
+  tm_polygons(col = "coef_fat", 
+              palette = "RdBu", 
+              alpha = 0.5)
+# plot saturate
+tm_shape(obgro_msoa2) +
+  tm_polygons(col = "coef_saturate", 
+              palette = "RdBu", 
+              alpha = 0.5)
+
+```
+#### test whether the result is sigificant
+Check whether the above results are significant.
+```{r}
+# carb sigificant
+sigTest_carb = abs(gwr.model$SDF$"carb")-2 * gwr.model$SDF$"carb_se"
+# fat sigificant
+sigTest_fat = abs(gwr.model$SDF$"fat")-2 * gwr.model$SDF$"fat_se"
+# saturate sigificant
+sigTest_saturate = abs(gwr.model$SDF$"saturate")-2 * gwr.model$SDF$"saturate_se"
+
+#store significance results
+obgro_msoa2 <- obgro_msoa2 %>%
+  mutate(GWR_carbSig = sigTest_carb,
+         GWR_fatSig = sigTest_fat,
+         GWR_saturateSig = sigTest_saturate)
+```
+#### plot the significance map
+The significance of each variable is plotted on the map, which has an intuitive concept.
+```{r}
+# carb
+tm_shape(obgro_msoa2) +
+  tm_polygons(col = "GWR_carbSig", 
+              palette = "RdYlBu")
+
+# fat
+tm_shape(obgro_msoa2) +
+  tm_polygons(col = "GWR_fatSig", 
+              palette = "RdYlBu")
+# carb
+tm_shape(obgro_msoa2) +
+  tm_polygons(col = "GWR_saturateSig", 
+              palette = "RdYlBu")
+
+```
+
+## Reflection
+From my analysis results, there are some defects as follows:
+- First of all, the goodness of fit of the OLS model needs to be mentioned. The value of the R square is not too high, which means that I may have overlooked other important variables, leading to the insufficient interpretation of my independent variable to the dependent variable. I think obesity may also be related to the frequency of people's exercise and other factors, but I have not included this part of the appropriate data.
+- Secondly, there is a problem of multicollinearity in my data. I think this is an oversight when I create variables. I did not consider that the contents embodied by fat and saturate are very similar in nature, which may be due to my lack of understanding of saturate. And I have never solved the problem of collinearity. If I have more time, I want to try to add other variables to build the model while removing the saturate.
+- In addition, there is spatial autocorrelation in my model. I think this may be because food promotion in different regions will attract people nearby to buy or for other reasons. There is no better solution at present. But I am willing to continue to try to solve it if time is enough.
+
+## Discussion
+
+- An important purpose of my analysis is to make people understand the role of diet in obesity. Unhealthy diet, such as excessive intake of carb and fat, will lead to obesity with a higher probability. Therefore, through such an analysis, we call on people to pay attention to the ingredients when they go to the grocery store to buy goods, and whether too much is harmful to the health. After this analysis, there may be other analysis to study the relationship between obesity and people's life span. We should further alert people to the dangers of obesity and live a healthy life.
+- After answering my research question that diet does have an impact on obesity, I think I can still compare whether the results in different time dimensions are consistent. This can be more persuasive, and it can also tell whether people's diet is getting healthier or less healthy. In addition, the food ingredients purchased in Tesco cannot fully represent all the ingredients that people consume in their lives, so this part of data is not comprehensive enough.
+- In addition, for my analysis, I was confused about the matching degree of time. The time of the food ingredients I selected was slightly different from the time of obesity rate in years, which may be a factor leading to the regression results. It may be that food consumption will not be reflected in obesity immediately, which requires a certain amount of time. This is the point that I may improve and think about later
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
